@@ -930,14 +930,12 @@ async function runAiAnalysis() {
     }
 
     if (!response.ok) {
-      const errData = await response.json();
-      const errMsg = errData?.error?.message || `HTTP ${response.status}`;
-      if (response.status === 401 || response.status === 400 && errMsg.includes('API_KEY')) {
-        throw new Error('API Key không hợp lệ hoặc đã hết hạn.');
-      } else if (response.status === 429) {
-        throw new Error('Vượt quá giới hạn request hoặc hết tiền trong tài khoản.');
-      }
-      throw new Error(errMsg);
+      let errMsg = `HTTP ${response.status}`;
+      try {
+        const errData = await response.json();
+        errMsg = errData?.error?.message || JSON.stringify(errData?.error || errData);
+      } catch(e) {}
+      throw new Error(`[${response.status}] ${errMsg}`);
     }
 
     const data = await response.json();
