@@ -686,7 +686,7 @@ function updateProviderUI() {
   if (provider === 'gemini') {
     geminiOpts.forEach(o => o.style.display = 'block');
     chatgptOpts.forEach(o => o.style.display = 'none');
-    document.getElementById('ai-model-select').value = 'gemini-2.0-flash-exp';
+    document.getElementById('ai-model-select').value = 'gemini-2.0-flash';
     link.href = 'https://aistudio.google.com/app/apikey';
     tierInfo.textContent = '✅ Free tier: 15 req/phút, 1 triệu token/ngày';
   } else {
@@ -876,7 +876,7 @@ async function runAiAnalysis() {
 
   const btn      = document.getElementById('btn-analyze');
   const modelSel = document.getElementById('ai-model-select');
-  const model    = modelSel ? modelSel.value : (provider==='chatgpt'?'gpt-4o-mini':'gemini-2.0-flash-exp');
+  const model    = modelSel ? modelSel.value : (provider==='chatgpt'?'gpt-4o-mini':'gemini-2.0-flash');
   const n        = parseInt(document.getElementById('ai-data-range').value);
   const prompt   = buildGeminiPrompt(selectedAiType, n);
   const estTokens = estimateTokens(prompt);
@@ -992,7 +992,7 @@ async function runAiAnalysis() {
     resultEl.innerHTML = `
       <div style="padding:20px;text-align:center">
         <div style="font-size:40px;margin-bottom:12px">❌</div>
-        <div style="color:var(--red-light);font-weight:700;margin-bottom:8px">Lỗi khi gọi Gemini API</div>
+        <div style="color:var(--red-light);font-weight:700;margin-bottom:8px">Lỗi khi gọi AI API</div>
         <div style="color:var(--text-muted);font-size:13px">${err.message}</div>
         <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">
           Kiểm tra: API Key đúng chưa? Còn quota không? Mạng có ổn không?
@@ -1249,7 +1249,7 @@ async function handleImageUpload(event) {
 }
 
 async function scanTicketWithAI(base64Data, statusEl, resultEl) {
-  const apiKey = getGeminiKey();
+  const apiKey = getApiKey('gemini');
   if (!apiKey) {
     statusEl.textContent = 'Vui lòng nhập API Key ở tab AI trước!';
     statusEl.style.color = 'var(--red-light)';
@@ -1278,7 +1278,7 @@ async function scanTicketWithAI(base64Data, statusEl, resultEl) {
   };
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
