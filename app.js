@@ -672,7 +672,9 @@ function updateProbChart(type, btn) {
 }
 
 // ============ GEMINI / CHATGPT AI ============
-function getGeminiKey() { return localStorage.getItem('gemini_api_key') || ''; }
+function getApiKey(provider) { 
+  return localStorage.getItem(provider === 'chatgpt' ? 'chatgpt_api_key' : 'gemini_api_key') || ''; 
+}
 
 function updateProviderUI() {
   const provider = document.getElementById('ai-provider-select').value;
@@ -694,12 +696,21 @@ function updateProviderUI() {
     link.href = 'https://platform.openai.com/api-keys';
     tierInfo.textContent = '💰 Mất phí (Cần nạp thẻ vào OpenAI) - Rất rẻ';
   }
+  
+  // Tự động load key của hệ thống tương ứng vào ô nhập
+  const savedKey = getApiKey(provider);
+  document.getElementById('gemini-api-key').value = savedKey;
+  updateKeyStatus(!!savedKey);
 }
 
 function saveApiKey() {
+  const provider = document.getElementById('ai-provider-select').value;
   const key = document.getElementById('gemini-api-key').value.trim();
   if (!key || key.length < 20) { showNotification('⚠️ API Key không hợp lệ!', 'warning'); return; }
-  localStorage.setItem('gemini_api_key', key);
+  
+  const storageKey = provider === 'chatgpt' ? 'chatgpt_api_key' : 'gemini_api_key';
+  localStorage.setItem(storageKey, key);
+  
   updateKeyStatus(true);
   showNotification('✅ Đã lưu API Key thành công!', 'success');
 }
@@ -851,7 +862,8 @@ function parseAiResponse(text) {
 }
 
 async function runAiAnalysis() {
-  const key = getGeminiKey();
+  const provider = document.getElementById('ai-provider-select').value;
+  const key = getApiKey(provider);
   if (!key) {
     showNotification('⚠️ Vui lòng nhập và lưu API Key trước!', 'warning');
     document.getElementById('gemini-api-key').focus();
@@ -864,7 +876,6 @@ async function runAiAnalysis() {
 
   const btn      = document.getElementById('btn-analyze');
   const modelSel = document.getElementById('ai-model-select');
-  const provider = document.getElementById('ai-provider-select').value;
   const model    = modelSel ? modelSel.value : (provider==='chatgpt'?'gpt-4o-mini':'gemini-2.0-flash-exp');
   const n        = parseInt(document.getElementById('ai-data-range').value);
   const prompt   = buildGeminiPrompt(selectedAiType, n);
@@ -1066,11 +1077,7 @@ async function init() {
   }
 
   // Load API key nếu có
-  const savedKey = getGeminiKey();
-  if (savedKey) {
-    document.getElementById('gemini-api-key').value = savedKey;
-    updateKeyStatus(true);
-  }
+  updateProviderUI();
 
   loadTheme();
   initTabs();
