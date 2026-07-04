@@ -309,10 +309,12 @@
       <div class="panel-body">
           <div class="api-key-input-group" style="margin-bottom: 8px;">
             <select id="ai-provider-select" onchange="updateProviderUI()" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-primary);">
-              <option value="gemini" selected>Google Gemini</option>
-              <option value="chatgpt">OpenAI ChatGPT</option>
+              <option value="builtin" selected>🤖 AI Tích Hợp (Miễn phí, Không cần Key)</option>
+              <option value="gemini">Google Gemini (Cần API Key)</option>
+              <option value="chatgpt">OpenAI ChatGPT (Cần API Key)</option>
             </select>
           </div>
+          <div id="api-key-section">
           <div class="api-key-input-group">
             <input type="password" id="gemini-api-key" placeholder="Dán API Key vào đây..."
                    autocomplete="off" spellcheck="false">

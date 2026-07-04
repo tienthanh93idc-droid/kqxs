@@ -283,26 +283,140 @@ function calcProbability(arr) {
   const freqMap = calcFrequency(arr);
   const ganObj = calcGan(arr);
   const markovObj = calcMarkov(arr);
-  
+  const cycleObj = calcCycle(arr);
   const lastNum = arr.length > 0 ? String(arr[0]).padStart(2, '0') : '00';
+  const prevNum = arr.length > 1 ? String(arr[1]).padStart(2, '0') : '00';
   const nextMarkov = markovObj[lastNum] || {};
-  
-  const maxFreq = Math.max(...Object.values(freqMap), 1);
-  const maxMarkov = Math.max(...Object.values(nextMarkov), 1);
-
-  const prob = {};
-  for(let i = 0; i < 100; i++) {
-    const num = String(i).padStart(2, '0');
-    const freqScore = (freqMap[num] || 0) / maxFreq;
-    const ganScore = Math.min((ganObj[num] || 0) / 30, 1);
-    const mScore = (nextMarkov[num] || 0) / maxMarkov;
-    
-    // Markov: 50%, Freq: 30%, Gan: 20%
-    prob[num] = freqScore * 0.3 + ganScore * 0.2 + mScore * 0.5;
+  // Markov bậc 2
+  const markov2 = {};
+  for (let i = 2; i < arr.length; i++) {
+    const a = String(arr[i]).padStart(2, '0');
+    const b = String(arr[i-1]).padStart(2, '0');
+    const c = String(arr[i-2]).padStart(2, '0');
+    const pk = a + '_' + b;
+    if (!markov2[pk]) markov2[pk] = {};
+    markov2[pk][c] = (markov2[pk][c] || 0) + 1;
   }
-  const maxProb = Math.max(...Object.values(prob)) || 1;
-  Object.keys(prob).forEach(k => { prob[k] = (prob[k] / maxProb) * 100; });
+  const nextM2 = markov2[prevNum + '_' + lastNum] || {};
+  // Xu hướng 10 kỳ gần
+  const recent = arr.slice(0, Math.min(10, arr.length));
+  const recentF = {};
+  recent.forEach(n => { const k = String(n).padStart(2,'0'); recentF[k] = (recentF[k]||0)+1; });
+  // Pattern theo ngày
+  const today = new Date().getDay();
+  const tDay = today <= 2 ? 2 : 7;
+  const dayF = {};
+  (APP_DATA||[]).forEach(d => { if(d.day===tDay) { const k=String(d.g8).padStart(2,'0'); dayF[k]=(dayF[k]||0)+1; }});
+  const mx = (o) => Math.max(...Object.values(o), 1);
+  const mxF=mx(freqMap), mxM=mx(nextMarkov), mxM2=mx(nextM2)||1, mxR=mx(recentF)||1, mxD=mx(dayF)||1;
+  const prob = {};
+  for(let i=0;i<100;i++){
+    const num=String(i).padStart(2,'0');
+    const fS=(freqMap[num]||0)/mxF;
+    let gS=Math.min((ganObj[num]||0)/30,1);
+    const cy=cycleObj[num];
+    if(cy&&cy>0&&(ganObj[num]||0)>=cy) gS=Math.min(gS*1.5,1);
+    const m1=(nextMarkov[num]||0)/mxM;
+    const m2=(nextM2[num]||0)/mxM2;
+    const rS=(recentF[num]||0)/mxR;
+    const dS=(dayF[num]||0)/mxD;
+    prob[num]=m2*0.25+m1*0.20+gS*0.20+rS*0.15+dS*0.10+fS*0.10;
+  }
+  const mxP=Math.max(...Object.values(prob))||1;
+  Object.keys(prob).forEach(k=>{prob[k]=(prob[k]/mxP)*100;});
   return prob;
+}
+
+// ============ BUILT-IN AI (Không cần API Key) ============
+function runBuiltInAI(type, n) {
+  const data = APP_DATA.slice(0, n);
+  if (data.length < 5) return 'Chưa đủ dữ liệu.';
+  const g8A=getG8Array(n), dbA=getDBTailArray(n);
+  const g8P=calcProbability(g8A), dbP=calcProbability(dbA);
+  const g8F=calcFrequency(g8A), dbF=calcFrequency(dbA);
+  const g8G=calcGan(g8A), dbG=calcGan(dbA);
+  const g8M=calcMarkov(g8A), dbM=calcMarkov(dbA);
+  const g8C=calcCycle(g8A), dbC=calcCycle(dbA);
+  const topK=(o,k)=>Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,k);
+  const latest=data[0];
+  const lG8=String(latest?.g8||'00').padStart(2,'0');
+  const lDB=String(latest?.dbTail||(latest?.db?latest.db.slice(-2):'00')).padStart(2,'0');
+  const sName=stationList[currentStation]?.name||'TP.HCM';
+  const tG8=topK(g8P,5), tDB=topK(dbP,5);
+  const mG8=topK(g8M[lG8]||{},3), mDB=topK(dbM[lDB]||{},3);
+  // Gan vượt chu kỳ
+  const gAlert=(ganObj,cycObj)=>{
+    const r=[];
+    Object.entries(ganObj).forEach(([num,gan])=>{
+      const cy=cycObj[num];
+      if(cy&&gan>=cy*1.2&&gan>5) r.push({num,gan,cycle:cy,over:Math.round((gan/cy-1)*100)});
+    });
+    return r.sort((a,b)=>b.over-a.over).slice(0,3);
+  };
+  const gaG8=gAlert(g8G,g8C), gaDB=gAlert(dbG,dbC);
+  // Hot 10 kỳ
+  const hotF=(arr)=>{const f={};arr.slice(0,10).forEach(n=>{const k=String(n).padStart(2,'0');f[k]=(f[k]||0)+1;});return topK(f,3).filter(([,c])=>c>=2);};
+  const hG8=hotF(g8A), hDB=hotF(dbA);
+
+  if(type==='vip'){
+    return `## 🎯 CHỐT SỐ VIP - ĐÀI ${sName.toUpperCase()}
+
+### 🎯 BẠCH THỦ G8: **${tG8[0][0]}** (${tG8[0][1].toFixed(0)}%)
+${mG8.find(([n])=>n===tG8[0][0])?'- Markov: Sau '+lG8+' → hay ra **'+tG8[0][0]+'** ('+mG8.find(([n])=>n===tG8[0][0])[1]+' lần)':'- Xác suất tổng hợp đa chiều cao nhất'}
+${gaG8.find(a=>a.num===tG8[0][0])?'- Gan '+gaG8.find(a=>a.num===tG8[0][0]).gan+' kỳ, vượt chu kỳ '+gaG8.find(a=>a.num===tG8[0][0]).over+'%':''}
+
+### 🎯 SONG THỦ G8: **${tG8[0][0]}** - **${tG8[1][0]}**
+
+### 🎯 BẠCH THỦ ĐUÔI ĐB: **${tDB[0][0]}** (${tDB[0][1].toFixed(0)}%)
+${mDB.find(([n])=>n===tDB[0][0])?'- Markov: Sau đuôi '+lDB+' → hay ra **'+tDB[0][0]+'** ('+mDB.find(([n])=>n===tDB[0][0])[1]+' lần)':'- Xác suất tổng hợp đa chiều cao nhất'}
+
+### ⚠️ Lưu ý
+Thuật toán: Markov bậc 2 + Nhịp Gan vượt chu kỳ + Xu hướng gần + Pattern ngày. Chỉ mang tính thống kê.`;
+  }
+
+  return `## 🤖 PHÂN TÍCH AI TÍCH HỢP - ĐÀI ${sName.toUpperCase()}
+**${n} kỳ · Kỳ cuối: ${latest?.date} · G8=${lG8} · Đuôi ĐB=${lDB}**
+
+---
+
+### 🔥 TOP 3 DỰ ĐOÁN G8 KỲ TỚI
+${tG8.slice(0,3).map(([num,sc],i)=>{
+  const r=[];
+  const mH=mG8.find(([n])=>n===num);
+  if(mH) r.push('Markov: sau '+lG8+' → hay ra **'+num+'** ('+mH[1]+' lần)');
+  const gI=gaG8.find(a=>a.num===num);
+  if(gI) r.push('Gan '+gI.gan+' kỳ, vượt chu kỳ '+gI.over+'%');
+  if(!r.length) r.push('Xác suất tổng hợp đa chiều cao (Tần suất: '+((g8F[num]||0))+' lần, Gan: '+(g8G[num]||0)+' kỳ)');
+  return '**'+(i+1)+'. Số '+num+'** ('+sc.toFixed(0)+'%)\n   - '+r.join('\n   - ');
+}).join('\n\n')}
+
+---
+
+### ⭐ TOP 3 DỰ ĐOÁN ĐUÔI ĐB KỲ TỚI
+${tDB.slice(0,3).map(([num,sc],i)=>{
+  const r=[];
+  const mH=mDB.find(([n])=>n===num);
+  if(mH) r.push('Markov: sau đuôi '+lDB+' → hay ra **'+num+'** ('+mH[1]+' lần)');
+  const gI=gaDB.find(a=>a.num===num);
+  if(gI) r.push('Gan '+gI.gan+' kỳ, vượt chu kỳ '+gI.over+'%');
+  if(!r.length) r.push('Xác suất tổng hợp đa chiều cao (Tần suất: '+((dbF[num]||0))+' lần, Gan: '+(dbG[num]||0)+' kỳ)');
+  return '**'+(i+1)+'. Đuôi '+num+'** ('+sc.toFixed(0)+'%)\n   - '+r.join('\n   - ');
+}).join('\n\n')}
+
+---
+
+### 🧊 SỐ GAN ĐÁNG CHÚ Ý
+${gaG8.length>0?'**G8:** '+gaG8.map(a=>'**'+a.num+'** (gan '+a.gan+' kỳ, chu kỳ TB '+a.cycle+' → vượt '+a.over+'%)').join(' | '):'G8: Không có số nào vượt chu kỳ bất thường.'}
+${gaDB.length>0?'**ĐB:** '+gaDB.map(a=>'**'+a.num+'** (gan '+a.gan+' kỳ, chu kỳ TB '+a.cycle+' → vượt '+a.over+'%)').join(' | '):'ĐB: Không có số nào vượt chu kỳ bất thường.'}
+
+---
+
+### 🔍 XU HƯỚNG NÓNG (10 KỲ GẦN)
+${hG8.length>0?'**G8 đang nóng:** '+hG8.map(([n,c])=>'**'+n+'** ('+c+' lần/10 kỳ)').join(', '):'G8: Phân bố đều.'}
+${hDB.length>0?'**ĐB đang nóng:** '+hDB.map(([n,c])=>'**'+n+'** ('+c+' lần/10 kỳ)').join(', '):'ĐB: Phân bố đều.'}
+
+---
+⚠️ **Thuật toán:** Markov bậc 2 (25%) + Markov bậc 1 (20%) + Nhịp Gan & Chu kỳ (20%) + Xu hướng gần (15%) + Pattern ngày (10%) + Tần suất (10%)`;
 }
 
 function calcCycle(arr) {
@@ -673,6 +787,7 @@ function updateProbChart(type, btn) {
 
 // ============ GEMINI / CHATGPT AI ============
 function getApiKey(provider) { 
+  if (provider === 'builtin') return 'builtin_free';
   return localStorage.getItem(provider === 'chatgpt' ? 'chatgpt_api_key' : 'gemini_api_key') || ''; 
 }
 
@@ -682,19 +797,43 @@ function updateProviderUI() {
   const chatgptOpts = document.querySelectorAll('.opt-chatgpt');
   const link = document.getElementById('link-get-key');
   const tierInfo = document.getElementById('api-tier-info');
+  const apiKeySection = document.getElementById('api-key-section');
+  const tokenEstimate = document.getElementById('token-estimate');
+  
+  if (provider === 'builtin') {
+    geminiOpts.forEach(o => o.style.display = 'none');
+    chatgptOpts.forEach(o => o.style.display = 'none');
+    document.getElementById('ai-model-select').innerHTML = '<option value="builtin-markov2">🧠 Bộ Phân Tích Markov Bậc 2</option>';
+    if (apiKeySection) apiKeySection.style.display = 'none';
+    if (tierInfo) tierInfo.textContent = '✅ Hệ thống AI tích hợp chạy ngay lập tức, miễn phí 100%.';
+    if (tokenEstimate) tokenEstimate.style.display = 'none';
+    updateKeyStatus(true);
+    return;
+  }
+
+  if (apiKeySection) apiKeySection.style.display = 'block';
+  if (tokenEstimate) tokenEstimate.style.display = 'block';
   
   if (provider === 'gemini') {
     geminiOpts.forEach(o => o.style.display = 'block');
     chatgptOpts.forEach(o => o.style.display = 'none');
-    document.getElementById('ai-model-select').value = 'gemini-2.0-flash';
+    document.getElementById('ai-model-select').innerHTML = `
+      <option value="gemini-2.0-flash" class="opt-gemini" selected>⚡ Gemini 2.0 Flash (Nhanh · Tiết kiệm)</option>
+      <option value="gemini-1.5-flash" class="opt-gemini">💨 Gemini 1.5 Flash (Ổn định)</option>
+      <option value="gemini-1.5-pro" class="opt-gemini">🧠 Gemini 1.5 Pro (Sâu hơn)</option>
+    `;
     link.href = 'https://aistudio.google.com/app/apikey';
-    tierInfo.textContent = '✅ Free tier: 15 req/phút, 1 triệu token/ngày';
+    if (tierInfo) tierInfo.textContent = '✅ Free tier: 15 req/phút, 1 triệu token/ngày';
   } else {
     geminiOpts.forEach(o => o.style.display = 'none');
     chatgptOpts.forEach(o => o.style.display = 'block');
-    document.getElementById('ai-model-select').value = 'gpt-4o-mini';
+    document.getElementById('ai-model-select').innerHTML = `
+      <option value="gpt-4o-mini" class="opt-chatgpt" selected>⚡ GPT-4o Mini (Nhanh, Rẻ)</option>
+      <option value="gpt-4o" class="opt-chatgpt">🧠 GPT-4o (Thông minh nhất)</option>
+      <option value="gpt-3.5-turbo" class="opt-chatgpt">💨 GPT-3.5 Turbo (Cổ điển)</option>
+    `;
     link.href = 'https://platform.openai.com/api-keys';
-    tierInfo.textContent = '💰 Mất phí (Cần nạp thẻ vào OpenAI) - Rất rẻ';
+    if (tierInfo) tierInfo.textContent = '💰 Mất phí (Cần nạp thẻ vào OpenAI) - Rất rẻ';
   }
   
   // Tự động load key của hệ thống tương ứng vào ô nhập
@@ -705,6 +844,7 @@ function updateProviderUI() {
 
 function saveApiKey() {
   const provider = document.getElementById('ai-provider-select').value;
+  if (provider === 'builtin') return;
   const key = document.getElementById('gemini-api-key').value.trim();
   if (!key || key.length < 20) { showNotification('⚠️ API Key không hợp lệ!', 'warning'); return; }
   
@@ -864,27 +1004,52 @@ function parseAiResponse(text) {
 async function runAiAnalysis() {
   const provider = document.getElementById('ai-provider-select').value;
   const key = getApiKey(provider);
-  if (!key) {
-    showNotification('⚠️ Vui lòng nhập và lưu API Key trước!', 'warning');
-    document.getElementById('gemini-api-key').focus();
-    return;
-  }
+  
   if (APP_DATA.length === 0) {
     showNotification('⚠️ Chưa có dữ liệu để phân tích!', 'warning');
     return;
   }
 
-  const btn      = document.getElementById('btn-analyze');
+  const n = parseInt(document.getElementById('ai-data-range').value);
+  const btn = document.getElementById('btn-analyze');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-icon">⟳</span> Đang phân tích...';
+  const resultEl = document.getElementById('ai-result-body');
+
+  // Nếu không có API Key hoặc chọn Built-in -> Dùng Built-in AI
+  if (!key || key === 'builtin_free') {
+    resultEl.innerHTML = '<div class="ai-loading"><div class="ai-spinner"></div><div class="ai-loading-text">🤖 AI Tích hợp đang phân tích...</div></div>';
+    
+    // Delay nhẹ cho hiệu ứng loading
+    await new Promise(r => setTimeout(r, 800));
+    
+    const report = runBuiltInAI(selectedAiType, n);
+    const htmlResult = parseAiResponse(report);
+    resultEl.innerHTML = `
+      <div class="ai-result">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+          <span style="font-size:20px">🤖</span>
+          <div>
+            <strong style="color:var(--purple)">AI Tích Hợp (Markov²)</strong>
+            <div style="font-size:11px;color:var(--text-muted)">${new Date().toLocaleString('vi-VN')} · Phân tích ${n} kỳ · Không cần API Key</div>
+          </div>
+        </div>
+        ${htmlResult}
+      </div>`;
+    
+    document.getElementById('ai-token-info').textContent = '🆓 Miễn phí · Chạy cục bộ';
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-icon">✨</span> Phân Tích Bằng AI';
+    showNotification('✅ Phân tích hoàn thành (AI Tích hợp)!', 'success');
+    if (selectedAiType === 'vip') triggerFireworks();
+    return;
+  }
+
   const modelSel = document.getElementById('ai-model-select');
   const model    = modelSel ? modelSel.value : (provider==='chatgpt'?'gpt-4o-mini':'gemini-2.0-flash');
-  const n        = parseInt(document.getElementById('ai-data-range').value);
   const prompt   = buildGeminiPrompt(selectedAiType, n);
   const estTokens = estimateTokens(prompt);
 
-  btn.disabled = true;
-  btn.innerHTML = '<span class="btn-icon">⟳</span> Đang phân tích...';
-
-  const resultEl = document.getElementById('ai-result-body');
   resultEl.innerHTML = `
     <div class="ai-loading">
       <div class="ai-spinner"></div>
@@ -915,9 +1080,15 @@ async function runAiAnalysis() {
         })
       });
     } else {
-      response = await fetch(`${apiUrl}?key=${key}`, {
+      // Key mới (AQ.) dùng Bearer token, key cũ (AIza) dùng query param
+      const isNewKey = !key.startsWith('AIza');
+      const geminiUrl = isNewKey ? apiUrl : `${apiUrl}?key=${key}`;
+      const geminiHeaders = { 'Content-Type': 'application/json' };
+      if (isNewKey) geminiHeaders['Authorization'] = `Bearer ${key}`;
+      
+      response = await fetch(geminiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: geminiHeaders,
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
