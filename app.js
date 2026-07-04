@@ -671,8 +671,30 @@ function updateProbChart(type, btn) {
     </div>`).join('');
 }
 
-// ============ GEMINI AI ============
+// ============ GEMINI / CHATGPT AI ============
 function getGeminiKey() { return localStorage.getItem('gemini_api_key') || ''; }
+
+function updateProviderUI() {
+  const provider = document.getElementById('ai-provider-select').value;
+  const geminiOpts = document.querySelectorAll('.opt-gemini');
+  const chatgptOpts = document.querySelectorAll('.opt-chatgpt');
+  const link = document.getElementById('link-get-key');
+  const tierInfo = document.getElementById('api-tier-info');
+  
+  if (provider === 'gemini') {
+    geminiOpts.forEach(o => o.style.display = 'block');
+    chatgptOpts.forEach(o => o.style.display = 'none');
+    document.getElementById('ai-model-select').value = 'gemini-2.0-flash-exp';
+    link.href = 'https://aistudio.google.com/app/apikey';
+    tierInfo.textContent = '✅ Free tier: 15 req/phút, 1 triệu token/ngày';
+  } else {
+    geminiOpts.forEach(o => o.style.display = 'none');
+    chatgptOpts.forEach(o => o.style.display = 'block');
+    document.getElementById('ai-model-select').value = 'gpt-4o-mini';
+    link.href = 'https://platform.openai.com/api-keys';
+    tierInfo.textContent = '💰 Mất phí (Cần nạp thẻ vào OpenAI) - Rất rẻ';
+  }
+}
 
 function saveApiKey() {
   const key = document.getElementById('gemini-api-key').value.trim();
@@ -721,6 +743,10 @@ function buildGeminiPrompt(type, n, saveMode = false) {
   const dbGan   = calcGan(getDBTailArray());
   const g8Prob  = calcProbability(getG8Array(n));
   const dbProb  = calcProbability(getDBTailArray(n));
+  
+  // Lấy dữ liệu quy luật hành vi (Markov Chain) cho con số vừa ra
+  const markovG8 = calcMarkov(getG8Array(n));
+  const markovDB = calcMarkov(getDBTailArray(n));
 
   // Lấy top theo từng chiều, gọn hơn
   const topK = (obj, k) => Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,k);
@@ -731,6 +757,12 @@ function buildGeminiPrompt(type, n, saveMode = false) {
   const topDBProb  = topK(dbProb, 5).map(([n,s])=>`${n}[${s.toFixed(0)}%]`).join(' ');
   const ganG8Top   = topK(g8Gan, 5).map(([n,v])=>`${n}:${v}kỳ`).join(' ');
   const ganDBTop   = topK(dbGan, 5).map(([n,v])=>`${n}:${v}kỳ`).join(' ');
+  
+  // Phân tích thói quen (Habit/Markov)
+  const latestG8 = latest?.g8 || '00';
+  const latestDB = latest?.dbTail || (latest?.db ? latest.db.slice(-2) : '00');
+  const nextG8Habits = topK(markovG8[latestG8] || {}, 3).map(([n,c])=>`${n}(${c} lần)`).join(' ') || 'Chưa có chuỗi';
+  const nextDBHabits = topK(markovDB[latestDB] || {}, 3).map(([n,c])=>`${n}(${c} lần)`).join(' ') || 'Chưa có chuỗi';
 
   // 20 kỳ gần nhất theo dạng ngắn gọn (thay vì toàn bộ raw)
   const recent20 = data.slice(0, 20)
@@ -740,56 +772,54 @@ function buildGeminiPrompt(type, n, saveMode = false) {
   // Focus
   const stationName = stationList[currentStation]?.name || 'TP.HCM';
   const focus = {
-    full:    `Phân tích toàn diện G8 và đuôi ĐB (Đài ${stationName}).`,
-    g8:      `Chỉ phân tích số Giải 8 (G8 - Đài ${stationName}).`,
-    db:      `Chỉ phân tích đuôi Giải Đặc Biệt (Đài ${stationName}).`,
-    pattern: `Phát hiện pattern/chu kỳ ẩn (Đài ${stationName}).`,
-    vip:     `Chốt số VIP (Bạch thủ, Song thủ) đài ${stationName} hôm nay.`
+    full:    `Phân tích toàn diện G8 và đuôi ĐB (Đài ${stationName}). Áp dụng quy luật chuỗi Markov.`,
+    g8:      `Chỉ phân tích số Giải 8 (G8 - Đài ${stationName}). Dựa trên thói quen hành vi.`,
+    db:      `Chỉ phân tích đuôi Giải Đặc Biệt (Đài ${stationName}). Dựa trên thói quen hành vi.`,
+    pattern: `Phát hiện pattern/chuỗi hành vi ẩn (Đài ${stationName}). Phân tích sâu Markov.`,
+    vip:     `Chốt số VIP (Bạch thủ, Song thủ) đài ${stationName} hôm nay dựa trên thuật toán Markov.`
   }[type] || '';
 
-  if (type === 'vip') {
-    return `Chuyên gia XSKT ${stationName}. ${focus}
-
-DỮ LIỆU (${n} kỳ, đến ${latest?.date}):
-• Tần suất G8 cao nhất: ${topG8Freq}
-• Tần suất đuôi ĐB cao nhất: ${topDBFreq}
-• Xác suất G8: ${topG8Prob}
-• Xác suất ĐB: ${topDBProb}
-• G8 gan: ${ganG8Top}
-• ĐB gan: ${ganDBTop}
-${customQ ? `• Câu hỏi: ${customQ}` : ''}
-
-YÊU CẦU ĐẶC BIỆT (CHỐT SỐ VIP):
-Bỏ qua mọi phân tích rườm rà. Dựa trên dữ liệu trên, hãy chốt thẳng:
-1. 🎯 BẠCH THỦ (1 con số đẹp nhất đài ${stationName} hôm nay) + Giải thích trong 1 câu ngắn gọn.
-2. 🎯 SONG THỦ (1 cặp số an toàn nhất) + Giải thích trong 1 câu ngắn gọn.
-3. ⚠️ Lưu ý ngắn gọn: Đây chỉ là gợi ý thống kê, không chắc chắn 100%.
-
-Format thật to, rõ ràng, nổi bật các con số bằng **số**. Không viết dài dòng.`;
-  }
-
-  // Prompt ngắn gọn nhưng đầy đủ thông tin (Cho các chế độ khác)
-  const prompt = `Chuyên gia XSKT ${stationName}. ${focus}
-
-DỮ LIỆU (${n} kỳ, đến ${latest?.date}):
-• Kỳ mới nhất: ${latest?.date}(${getDayName(latest?.day)}) G8=${latest?.g8} ĐB=${latest?.db}
+  const dataSection = `DỮ LIỆU (${n} kỳ, đến ${latest?.date}):
+• Kỳ mới nhất vừa ra: G8=${latestG8}, đuôi ĐB=${latestDB}
+• Quy luật hành vi (Markov): Lịch sử cho thấy sau khi G8 ra ${latestG8}, kỳ tiếp theo hay về nhất là: ${nextG8Habits}
+• Quy luật hành vi (Markov): Lịch sử cho thấy sau khi đuôi ĐB ra ${latestDB}, kỳ tiếp theo hay về nhất đuôi: ${nextDBHabits}
 • Tần suất G8 cao nhất: ${topG8Freq}
 • Tần suất đuôi ĐB cao nhất: ${topDBFreq}
 • Xác suất tổng hợp G8: ${topG8Prob}
 • Xác suất tổng hợp ĐB: ${topDBProb}
 • G8 gan lâu: ${ganG8Top}
 • ĐB gan lâu: ${ganDBTop}
-• 20 kỳ gần: ${recent20}
+• 20 kỳ gần: ${recent20}`;
+
+  if (type === 'vip') {
+    return `Chuyên gia XSKT ${stationName}. ${focus}
+
+${dataSection}
+${customQ ? `• Câu hỏi: ${customQ}` : ''}
+
+YÊU CẦU ĐẶC BIỆT (CHỐT SỐ VIP):
+Kết hợp chặt chẽ giữa [Quy luật hành vi Markov], [Nhịp Gan] và [Xác suất]. Hãy chốt thẳng:
+1. 🎯 BẠCH THỦ (1 con số đẹp nhất đài ${stationName} hôm nay) + Giải thích trong 1 câu tại sao nó hợp chuỗi Markov.
+2. 🎯 SONG THỦ (1 cặp số an toàn nhất) + Giải thích ngắn gọn.
+3. ⚠️ Lưu ý ngắn gọn: Đây chỉ là phân tích AI, không chắc chắn 100%.
+
+Format thật to, rõ ràng, nổi bật các con số bằng **số**. Không viết dài dòng.`;
+  }
+
+  // Prompt ngắn gọn nhưng đầy đủ thông tin (Cho các chế độ khác)
+  const prompt = `Chuyên gia phân tích XSKT ${stationName}. ${focus}
+
+${dataSection}
 ${customQ ? `• Câu hỏi: ${customQ}` : ''}
 
 YÊU CẦU:
-1. 🔥 Top 5 G8 kỳ tới + lý do
-2. ⭐ Top 5 đuôi ĐB kỳ tới + lý do
-3. 🧊 Số gan đáng chú ý
-4. 🔍 Pattern/xu hướng nổi bật
-5. ⚠️ Lưu ý: Chỉ mang tính thống kê
+1. 🔥 Top 3 G8 kỳ tới dựa trên [Quy luật hành vi Markov] + lý do
+2. ⭐ Top 3 đuôi ĐB kỳ tới dựa trên [Quy luật hành vi Markov] + lý do
+3. 🧊 Phân tích sự phá vỡ hoặc tiếp diễn chu kỳ của các số gan.
+4. 🔍 Kết luận xu hướng chung.
+5. ⚠️ Lưu ý: Chỉ mang tính thống kê.
 
-Format: cấu trúc rõ, dùng emoji, highlight số bằng **số**.`;
+Format: cấu trúc rõ ràng, dùng emoji, highlight số dự đoán bằng **số**. Lý luận phải lô-gic, xoáy sâu vào thói quen hành vi Markov.`;
 
   return prompt;
 }
@@ -823,7 +853,7 @@ function parseAiResponse(text) {
 async function runAiAnalysis() {
   const key = getGeminiKey();
   if (!key) {
-    showNotification('⚠️ Vui lòng nhập và lưu Gemini API Key trước!', 'warning');
+    showNotification('⚠️ Vui lòng nhập và lưu API Key trước!', 'warning');
     document.getElementById('gemini-api-key').focus();
     return;
   }
@@ -834,7 +864,8 @@ async function runAiAnalysis() {
 
   const btn      = document.getElementById('btn-analyze');
   const modelSel = document.getElementById('ai-model-select');
-  const model    = modelSel ? modelSel.value : 'gemini-2.0-flash-exp';
+  const provider = document.getElementById('ai-provider-select').value;
+  const model    = modelSel ? modelSel.value : (provider==='chatgpt'?'gpt-4o-mini':'gemini-2.0-flash-exp');
   const n        = parseInt(document.getElementById('ai-data-range').value);
   const prompt   = buildGeminiPrompt(selectedAiType, n);
   const estTokens = estimateTokens(prompt);
@@ -850,40 +881,71 @@ async function runAiAnalysis() {
       <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Ước tính ~${estTokens} token input · Thường mất 5-15s</div>
     </div>`;
 
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const apiUrl = provider === 'chatgpt' 
+    ? 'https://api.openai.com/v1/chat/completions'
+    : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
   try {
-    const response = await fetch(`${apiUrl}?key=${key}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
+    let response;
+    
+    if (provider === 'chatgpt') {
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: 'user', content: prompt }],
           temperature: 0.7,
-          maxOutputTokens: 1024,
-          topP: 0.9
-        }
-      })
-    });
+          max_tokens: 1024,
+          top_p: 0.9
+        })
+      });
+    } else {
+      response = await fetch(`${apiUrl}?key=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1024,
+            topP: 0.9
+          }
+        })
+      });
+    }
 
     if (!response.ok) {
       const errData = await response.json();
       const errMsg = errData?.error?.message || `HTTP ${response.status}`;
-      if (response.status === 400 && errMsg.includes('API_KEY')) {
-        throw new Error('API Key không hợp lệ. Kiểm tra lại key của bạn.');
+      if (response.status === 401 || response.status === 400 && errMsg.includes('API_KEY')) {
+        throw new Error('API Key không hợp lệ hoặc đã hết hạn.');
       } else if (response.status === 429) {
-        throw new Error('Vượt quá giới hạn request. Vui lòng chờ 1 phút rồi thử lại.');
+        throw new Error('Vượt quá giới hạn request hoặc hết tiền trong tài khoản.');
       }
       throw new Error(errMsg);
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Gemini không trả về kết quả. Thử lại sau.');
+    let text = '';
+    let tokenInfoText = '';
+    
+    if (provider === 'chatgpt') {
+      text = data.choices?.[0]?.message?.content;
+      const usage = data.usage;
+      tokenInfoText = usage ? `📊 ${usage.prompt_tokens} → ${usage.completion_tokens} tokens` : '';
+    } else {
+      text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const tokenInfo = data.usageMetadata;
+      tokenInfoText = tokenInfo ? `📊 ${tokenInfo.promptTokenCount} → ${tokenInfo.candidatesTokenCount} tokens` : '';
+    }
 
-    const tokenInfo = data.usageMetadata;
-    document.getElementById('ai-token-info').textContent =
-      tokenInfo ? `📊 ${tokenInfo.promptTokenCount} → ${tokenInfo.candidatesTokenCount} tokens` : '';
+    if (!text) throw new Error('AI không trả về kết quả. Thử lại sau.');
+
+    document.getElementById('ai-token-info').textContent = tokenInfoText;
 
     const htmlResult = parseAiResponse(text);
     resultEl.innerHTML = `
@@ -891,7 +953,7 @@ async function runAiAnalysis() {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
           <span style="font-size:20px">🤖</span>
           <div>
-            <strong style="color:var(--purple)">Gemini 2.0 Flash</strong>
+            <strong style="color:var(--purple)">${provider === 'chatgpt' ? 'OpenAI ChatGPT' : 'Gemini AI'} (${model})</strong>
             <div style="font-size:11px;color:var(--text-muted)">${new Date().toLocaleString('vi-VN')} · Phân tích ${n} kỳ</div>
           </div>
         </div>

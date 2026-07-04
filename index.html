@@ -303,21 +303,26 @@
     <!-- API Key Settings -->
     <div class="panel ai-settings-panel">
       <div class="panel-header">
-        <span>🔑 Cài Đặt Google Gemini API</span>
+        <span>🔑 Cài Đặt AI API</span>
         <span class="badge badge-green" id="ai-key-status">Chưa cấu hình</span>
       </div>
       <div class="panel-body">
-        <div class="api-key-form">
+          <div class="api-key-input-group" style="margin-bottom: 8px;">
+            <select id="ai-provider-select" onchange="updateProviderUI()" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-primary);">
+              <option value="gemini" selected>Google Gemini</option>
+              <option value="chatgpt">OpenAI ChatGPT</option>
+            </select>
+          </div>
           <div class="api-key-input-group">
-            <input type="password" id="gemini-api-key" placeholder="Dán Gemini API Key của bạn vào đây..."
+            <input type="password" id="gemini-api-key" placeholder="Dán API Key vào đây..."
                    autocomplete="off" spellcheck="false">
             <button class="btn-show-key" onclick="toggleKeyVisibility()" id="show-key-btn">👁</button>
           </div>
           <button class="btn-save-key" onclick="saveApiKey()">💾 Lưu Key</button>
-          <a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn-get-key">🔗 Lấy API Key miễn phí</a>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn-get-key" id="link-get-key">🔗 Lấy API Key miễn phí</a>
         </div>
         <div class="api-info">
-          <span>✅ Free tier: 15 req/phút, 1 triệu token/ngày</span>
+          <span id="api-tier-info">✅ Free tier: 15 req/phút, 1 triệu token/ngày</span>
           <span>🔒 Key được lưu trên máy (localStorage), không gửi đi đâu</span>
         </div>
       </div>
@@ -334,12 +339,14 @@
         <div class="panel-body">
           <div class="ai-options">
             <div class="ai-option-group">
-              <label>🤖 Chọn Model Gemini:</label>
+              <label>🤖 Chọn Model AI:</label>
               <select id="ai-model-select">
-                <option value="gemini-2.0-flash-exp" selected>⚡ Gemini 2.0 Flash (Nhanh · Tiết kiệm token)</option>
-                <option value="gemini-1.5-flash-latest">💨 Gemini 1.5 Flash (Ổn định)</option>
-                <option value="gemini-1.5-pro-latest">🧠 Gemini 1.5 Pro (Sâu hơn · Tốn token hơn)</option>
-                <option value="gemini-exp-1206">🔬 Thử nghiệm mới nhất (Experimental)</option>
+                <option value="gemini-2.0-flash-exp" class="opt-gemini" selected>⚡ Gemini 2.0 Flash (Nhanh · Tiết kiệm)</option>
+                <option value="gemini-1.5-flash-latest" class="opt-gemini">💨 Gemini 1.5 Flash (Ổn định)</option>
+                <option value="gemini-1.5-pro-latest" class="opt-gemini">🧠 Gemini 1.5 Pro (Sâu hơn)</option>
+                <option value="gpt-4o-mini" class="opt-chatgpt" style="display:none">⚡ GPT-4o Mini (Nhanh, Rẻ)</option>
+                <option value="gpt-4o" class="opt-chatgpt" style="display:none">🧠 GPT-4o (Thông minh nhất)</option>
+                <option value="gpt-3.5-turbo" class="opt-chatgpt" style="display:none">💨 GPT-3.5 Turbo (Cổ điển)</option>
               </select>
             </div>
             <div class="ai-option-group">
@@ -393,7 +400,7 @@
           <div class="ai-placeholder">
             <div class="ai-placeholder-icon">🤖</div>
             <p>Nhập API Key và nhấn <strong>"Phân Tích Bằng AI"</strong> để bắt đầu.</p>
-            <p style="font-size:12px;color:var(--text-muted);margin-top:8px">Gemini sẽ phân tích toàn bộ dữ liệu lịch sử và đưa ra gợi ý chi tiết bằng tiếng Việt.</p>
+            <p style="font-size:12px;color:var(--text-muted);margin-top:8px">AI sẽ phân tích toàn bộ dữ liệu lịch sử và đưa ra gợi ý chi tiết bằng tiếng Việt.</p>
           </div>
         </div>
       </div>
