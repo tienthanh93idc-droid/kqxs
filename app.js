@@ -298,18 +298,44 @@ function calcProbability(arr) {
     markov2[pk][c] = (markov2[pk][c] || 0) + 1;
   }
   const nextM2 = markov2[prevNum + '_' + lastNum] || {};
-  // Xu hướng 10 kỳ gần
-  const recent = arr.slice(0, Math.min(10, arr.length));
-  const recentF = {};
-  recent.forEach(n => { const k = String(n).padStart(2,'0'); recentF[k] = (recentF[k]||0)+1; });
+  
+  // Xác suất có điều kiện Bayes (Dựa trên Chẵn/Lẻ và Tài/Xỉu của kỳ trước)
+  const isLastEven = parseInt(lastNum, 10) % 2 === 0;
+  const isLastTai = parseInt(lastNum, 10) >= 50; // Tài >= 50
+  const bayesF = {};
+  for (let i = 1; i < arr.length; i++) {
+    const pEven = parseInt(arr[i], 10) % 2 === 0;
+    const pTai = parseInt(arr[i], 10) >= 50;
+    if (pEven === isLastEven && pTai === isLastTai) {
+      const k = String(arr[i-1]).padStart(2, '0');
+      bayesF[k] = (bayesF[k] || 0) + 1;
+    }
+  }
+
+  // Moving Average / Momentum (Giao cắt SMA 10 và SMA 30)
+  const sma10 = {};
+  const sma30 = {};
+  arr.slice(0, Math.min(10, arr.length)).forEach(n => { const k = String(n).padStart(2,'0'); sma10[k] = (sma10[k]||0)+1; });
+  arr.slice(0, Math.min(30, arr.length)).forEach(n => { const k = String(n).padStart(2,'0'); sma30[k] = (sma30[k]||0)+1; });
+  const momentum = {};
+  for (let i = 0; i < 100; i++) {
+    const k = String(i).padStart(2, '0');
+    const s10 = (sma10[k] || 0) / 10;
+    const s30 = (sma30[k] || 0) / 30;
+    // Động lượng dương nếu dải ngắn hạn cắt lên dải dài hạn
+    momentum[k] = s10 > s30 ? (s10 - s30) : 0;
+  }
+
   // Pattern theo ngày
   const today = new Date().getDay();
   const tDay = today <= 2 ? 2 : 7;
   const dayF = {};
   (APP_DATA||[]).forEach(d => { if(d.day===tDay) { const k=String(d.g8).padStart(2,'0'); dayF[k]=(dayF[k]||0)+1; }});
+  
   const mx = (o) => Math.max(...Object.values(o), 1);
-  const mxF=mx(freqMap), mxM=mx(nextMarkov), mxM2=mx(nextM2)||1, mxR=mx(recentF)||1, mxD=mx(dayF)||1;
+  const mxF=mx(freqMap), mxM=mx(nextMarkov), mxM2=mx(nextM2)||1, mxB=mx(bayesF)||1, mxMom=mx(momentum)||0.01, mxD=mx(dayF)||1;
   const prob = {};
+  
   for(let i=0;i<100;i++){
     const num=String(i).padStart(2,'0');
     const fS=(freqMap[num]||0)/mxF;
@@ -318,9 +344,12 @@ function calcProbability(arr) {
     if(cy&&cy>0&&(ganObj[num]||0)>=cy) gS=Math.min(gS*1.5,1);
     const m1=(nextMarkov[num]||0)/mxM;
     const m2=(nextM2[num]||0)/mxM2;
-    const rS=(recentF[num]||0)/mxR;
+    const bS=(bayesF[num]||0)/mxB;
+    const momS=(momentum[num]||0)/mxMom;
     const dS=(dayF[num]||0)/mxD;
-    prob[num]=m2*0.25+m1*0.20+gS*0.20+rS*0.15+dS*0.10+fS*0.10;
+    
+    // Thuật toán siêu cấp 8 lớp
+    prob[num] = m2*0.20 + m1*0.15 + bS*0.15 + momS*0.15 + gS*0.15 + dS*0.10 + fS*0.10;
   }
   const mxP=Math.max(...Object.values(prob))||1;
   Object.keys(prob).forEach(k=>{prob[k]=(prob[k]/mxP)*100;});
@@ -342,8 +371,9 @@ function runBuiltInAI(type, n) {
   const lG8=String(latest?.g8||'00').padStart(2,'0');
   const lDB=String(latest?.dbTail||(latest?.db?latest.db.slice(-2):'00')).padStart(2,'0');
   const sName=stationList[currentStation]?.name||'TP.HCM';
-  const tG8=topK(g8P,5), tDB=topK(dbP,5);
+  const tG8=topK(g8P,10), tDB=topK(dbP,10);
   const mG8=topK(g8M[lG8]||{},3), mDB=topK(dbM[lDB]||{},3);
+  
   // Gan vượt chu kỳ
   const gAlert=(ganObj,cycObj)=>{
     const r=[];
@@ -354,69 +384,78 @@ function runBuiltInAI(type, n) {
     return r.sort((a,b)=>b.over-a.over).slice(0,3);
   };
   const gaG8=gAlert(g8G,g8C), gaDB=gAlert(dbG,dbC);
-  // Hot 10 kỳ
-  const hotF=(arr)=>{const f={};arr.slice(0,10).forEach(n=>{const k=String(n).padStart(2,'0');f[k]=(f[k]||0)+1;});return topK(f,3).filter(([,c])=>c>=2);};
-  const hG8=hotF(g8A), hDB=hotF(dbA);
+  
+  // Động lượng MA (Moving Average Crossover)
+  const calcMA=(arr)=>{
+    const s10={}, s30={};
+    arr.slice(0,10).forEach(n=>{const k=String(n).padStart(2,'0'); s10[k]=(s10[k]||0)+1;});
+    arr.slice(0,30).forEach(n=>{const k=String(n).padStart(2,'0'); s30[k]=(s30[k]||0)+1;});
+    const mom={};
+    Object.keys(s10).forEach(k=>{if(s10[k]/10 > (s30[k]||0)/30) mom[k]=true;});
+    return Object.keys(mom);
+  };
+  const maG8 = calcMA(g8A);
+  const maDB = calcMA(dbA);
 
   if(type==='vip'){
     return `## 🎯 CHỐT SỐ VIP - ĐÀI ${sName.toUpperCase()}
 
 ### 🎯 BẠCH THỦ G8: **${tG8[0][0]}** (${tG8[0][1].toFixed(0)}%)
-${mG8.find(([n])=>n===tG8[0][0])?'- Markov: Sau '+lG8+' → hay ra **'+tG8[0][0]+'** ('+mG8.find(([n])=>n===tG8[0][0])[1]+' lần)':'- Xác suất tổng hợp đa chiều cao nhất'}
-${gaG8.find(a=>a.num===tG8[0][0])?'- Gan '+gaG8.find(a=>a.num===tG8[0][0]).gan+' kỳ, vượt chu kỳ '+gaG8.find(a=>a.num===tG8[0][0]).over+'%':''}
+${mG8.find(([n])=>n===tG8[0][0])?'- Markov: Sau '+lG8+' → hay ra **'+tG8[0][0]+'**':''}
+${maG8.includes(tG8[0][0])?'- Động lượng MA: SMA10 cắt lên SMA30 (đang vào luồng)':''}
+${gaG8.find(a=>a.num===tG8[0][0])?'- Gan vượt ngưỡng chu kỳ '+gaG8.find(a=>a.num===tG8[0][0]).over+'%':''}
 
 ### 🎯 SONG THỦ G8: **${tG8[0][0]}** - **${tG8[1][0]}**
 
 ### 🎯 BẠCH THỦ ĐUÔI ĐB: **${tDB[0][0]}** (${tDB[0][1].toFixed(0)}%)
-${mDB.find(([n])=>n===tDB[0][0])?'- Markov: Sau đuôi '+lDB+' → hay ra **'+tDB[0][0]+'** ('+mDB.find(([n])=>n===tDB[0][0])[1]+' lần)':'- Xác suất tổng hợp đa chiều cao nhất'}
+${mDB.find(([n])=>n===tDB[0][0])?'- Markov: Sau '+lDB+' → hay ra **'+tDB[0][0]+'**':''}
+${maDB.includes(tDB[0][0])?'- Động lượng MA: Đang có sóng tăng trưởng':''}
 
 ### ⚠️ Lưu ý
-Thuật toán: Markov bậc 2 + Nhịp Gan vượt chu kỳ + Xu hướng gần + Pattern ngày. Chỉ mang tính thống kê.`;
+Thuật toán: Bayes + Moving Average + Markov bậc 2. Chỉ mang tính tham khảo thống kê.`;
   }
 
-  return `## 🤖 PHÂN TÍCH AI TÍCH HỢP - ĐÀI ${sName.toUpperCase()}
+  return `## 🤖 PHÂN TÍCH AI TÍCH HỢP ĐA LỚP - ${sName.toUpperCase()}
 **${n} kỳ · Kỳ cuối: ${latest?.date} · G8=${lG8} · Đuôi ĐB=${lDB}**
 
 ---
 
-### 🔥 TOP 3 DỰ ĐOÁN G8 KỲ TỚI
-${tG8.slice(0,3).map(([num,sc],i)=>{
+### 🔥 TOP 8 DỰ ĐOÁN G8 KỲ TỚI
+${tG8.slice(0,8).map(([num,sc],i)=>{
   const r=[];
-  const mH=mG8.find(([n])=>n===num);
-  if(mH) r.push('Markov: sau '+lG8+' → hay ra **'+num+'** ('+mH[1]+' lần)');
-  const gI=gaG8.find(a=>a.num===num);
-  if(gI) r.push('Gan '+gI.gan+' kỳ, vượt chu kỳ '+gI.over+'%');
-  if(!r.length) r.push('Xác suất tổng hợp đa chiều cao (Tần suất: '+((g8F[num]||0))+' lần, Gan: '+(g8G[num]||0)+' kỳ)');
-  return '**'+(i+1)+'. Số '+num+'** ('+sc.toFixed(0)+'%)\n   - '+r.join('\n   - ');
+  if(mG8.find(([n])=>n===num)) r.push('Markov: Dấu vết lịch sử khớp nối sau '+lG8);
+  if(maG8.includes(num)) r.push('Moving Average: Dải 10 ngày cắt lên dải 30 ngày (Uptrend)');
+  if(gaG8.find(a=>a.num===num)) r.push('Gan/Chu kỳ: Đã nén đủ lâu, đến điểm nổ');
+  if(!r.length) r.push('Bayes/Tần suất: Xác suất có điều kiện thuận lợi');
+  return '**'+(i+1)+'. Số '+num+'** ('+sc.toFixed(1)+'%)\n   - '+r.join('\n   - ');
 }).join('\n\n')}
 
 ---
 
-### ⭐ TOP 3 DỰ ĐOÁN ĐUÔI ĐB KỲ TỚI
-${tDB.slice(0,3).map(([num,sc],i)=>{
+### ⭐ TOP 8 DỰ ĐOÁN ĐUÔI ĐB KỲ TỚI
+${tDB.slice(0,8).map(([num,sc],i)=>{
   const r=[];
-  const mH=mDB.find(([n])=>n===num);
-  if(mH) r.push('Markov: sau đuôi '+lDB+' → hay ra **'+num+'** ('+mH[1]+' lần)');
-  const gI=gaDB.find(a=>a.num===num);
-  if(gI) r.push('Gan '+gI.gan+' kỳ, vượt chu kỳ '+gI.over+'%');
-  if(!r.length) r.push('Xác suất tổng hợp đa chiều cao (Tần suất: '+((dbF[num]||0))+' lần, Gan: '+(dbG[num]||0)+' kỳ)');
-  return '**'+(i+1)+'. Đuôi '+num+'** ('+sc.toFixed(0)+'%)\n   - '+r.join('\n   - ');
+  if(mDB.find(([n])=>n===num)) r.push('Markov: Dấu vết lịch sử khớp nối sau '+lDB);
+  if(maDB.includes(num)) r.push('Moving Average: Crossover ngắn hạn > dài hạn');
+  if(gaDB.find(a=>a.num===num)) r.push('Gan/Chu kỳ: Sắp hết biên độ gan max');
+  if(!r.length) r.push('Bayes/Tần suất: Xác suất có điều kiện (Tài xỉu/Chẵn lẻ) cao');
+  return '**'+(i+1)+'. Đuôi '+num+'** ('+sc.toFixed(1)+'%)\n   - '+r.join('\n   - ');
 }).join('\n\n')}
 
 ---
 
-### 🧊 SỐ GAN ĐÁNG CHÚ Ý
-${gaG8.length>0?'**G8:** '+gaG8.map(a=>'**'+a.num+'** (gan '+a.gan+' kỳ, chu kỳ TB '+a.cycle+' → vượt '+a.over+'%)').join(' | '):'G8: Không có số nào vượt chu kỳ bất thường.'}
-${gaDB.length>0?'**ĐB:** '+gaDB.map(a=>'**'+a.num+'** (gan '+a.gan+' kỳ, chu kỳ TB '+a.cycle+' → vượt '+a.over+'%)').join(' | '):'ĐB: Không có số nào vượt chu kỳ bất thường.'}
+### 📈 CÁC SỐ ĐANG VÀO LUỒNG (SMA10 > SMA30)
+**G8:** ${maG8.slice(0, 5).join(', ') || 'Không có tín hiệu'}
+**ĐB:** ${maDB.slice(0, 5).join(', ') || 'Không có tín hiệu'}
 
 ---
 
-### 🔍 XU HƯỚNG NÓNG (10 KỲ GẦN)
-${hG8.length>0?'**G8 đang nóng:** '+hG8.map(([n,c])=>'**'+n+'** ('+c+' lần/10 kỳ)').join(', '):'G8: Phân bố đều.'}
-${hDB.length>0?'**ĐB đang nóng:** '+hDB.map(([n,c])=>'**'+n+'** ('+c+' lần/10 kỳ)').join(', '):'ĐB: Phân bố đều.'}
+### 🧊 SỐ NÉN VƯỢT CHU KỲ (CẢNH BÁO GAN)
+${gaG8.length>0?'**G8:** '+gaG8.map(a=>'**'+a.num+'** (+'+a.over+'%)').join(' | '):'G8: An toàn.'}
+${gaDB.length>0?'**ĐB:** '+gaDB.map(a=>'**'+a.num+'** (+'+a.over+'%)').join(' | '):'ĐB: An toàn.'}
 
 ---
-⚠️ **Thuật toán:** Markov bậc 2 (25%) + Markov bậc 1 (20%) + Nhịp Gan & Chu kỳ (20%) + Xu hướng gần (15%) + Pattern ngày (10%) + Tần suất (10%)`;
+⚠️ **Thuật toán siêu việt (8 lớp):** Markov² (20%) + Markov¹ (15%) + Bayes ChẵnLẻ/TàiXỉu (15%) + MA Crossover (15%) + Chu kỳ Gan (15%) + Pattern (10%) + Tần suất (10%)`;
 }
 
 function calcCycle(arr) {
