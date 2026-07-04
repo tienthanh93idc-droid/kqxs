@@ -333,24 +333,50 @@ function calcProbability(arr) {
   (APP_DATA||[]).forEach(d => { if(d.day===tDay) { const k=String(d.g8).padStart(2,'0'); dayF[k]=(dayF[k]||0)+1; }});
   
   const mx = (o) => Math.max(...Object.values(o), 1);
-  const mxF=mx(freqMap), mxM=mx(nextMarkov), mxM2=mx(nextM2)||1, mxB=mx(bayesF)||1, mxMom=mx(momentum)||0.01, mxD=mx(dayF)||1;
+  const mxF=mx(freqMap), mxM=mx(nextMarkov), mxM2=mx(nextM2)||1, mxB=mx(bayesF)||1, mxMom=mx(momentum)||0.01;
   const prob = {};
+  
+  // 1. Phân loại trọng số (Weighting) theo mô hình Ensemble Learning
+  const w_bayes = 0.30;   // Cao nhất (Cập nhật liên tục theo điều kiện)
+  const w_markov2 = 0.25; // Cao (Xét sâu bối cảnh 2 nhịp)
+  const w_gan = 0.20;     // Trung bình - Cao (Thời điểm vàng rơi)
+  const w_mom = 0.15;     // Trung bình (Xu hướng nóng / Moving Average)
+  const w_markov1 = 0.10; // Thấp (Bổ trợ)
   
   for(let i=0;i<100;i++){
     const num=String(i).padStart(2,'0');
-    const fS=(freqMap[num]||0)/mxF;
+    
     let gS=Math.min((ganObj[num]||0)/30,1);
     const cy=cycleObj[num];
     if(cy&&cy>0&&(ganObj[num]||0)>=cy) gS=Math.min(gS*1.5,1);
+    
     const m1=(nextMarkov[num]||0)/mxM;
     const m2=(nextM2[num]||0)/mxM2;
     const bS=(bayesF[num]||0)/mxB;
     const momS=(momentum[num]||0)/mxMom;
-    const dS=(dayF[num]||0)/mxD;
     
-    // Thuật toán siêu cấp 8 lớp
-    prob[num] = m2*0.20 + m1*0.15 + bS*0.15 + momS*0.15 + gS*0.15 + dS*0.10 + fS*0.10;
+    // 2. Bước Lọc (Filtering): Bỏ qua các số quá "chết" (0% xu hướng, 0% Bayes, 0% Markov)
+    if (m2 === 0 && bS === 0 && momS === 0 && (freqMap[num]||0) === 0) {
+      prob[num] = 0;
+      continue;
+    }
+
+    // 3. Bước Đánh giá (Scoring) - Weighted Voting
+    let rawScore = (bS * w_bayes) + (m2 * w_markov2) + (gS * w_gan) + (momS * w_mom) + (m1 * w_markov1);
+    
+    // 4. Bước Tối ưu hóa (Convergence Multiplier - Tín hiệu hội tụ)
+    // Nếu cả Markov 2 và Bayes đều cho tín hiệu cực mạnh (>50% điểm max) => Tăng hệ số ưu tiên x1.5
+    if (m2 > 0.5 && bS > 0.5) {
+      rawScore *= 1.5; 
+    }
+    // Nếu vừa có Markov 2 mạnh vừa có Chu kỳ gan chín muồi => x1.3
+    if (m2 > 0.5 && gS > 0.8) {
+      rawScore *= 1.3;
+    }
+
+    prob[num] = rawScore;
   }
+  
   const mxP=Math.max(...Object.values(prob))||1;
   Object.keys(prob).forEach(k=>{prob[k]=(prob[k]/mxP)*100;});
   return prob;
