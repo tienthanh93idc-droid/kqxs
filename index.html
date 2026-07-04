@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XSKT TP.HCM - AI Phân Tích & Dự Đoán</title>
+  <meta name="description" content="Phần mềm theo dõi, phân tích AI và dự đoán XSKT Miền Nam - Powered by Google Gemini">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- PWA Meta Tags (iPhone/iOS Support) -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="XSKT AI">
+  <meta name="theme-color" content="#121212">
+  <link rel="apple-touch-icon" href="icon-192.png"> <!-- Placeholder icon -->
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-icon">🎰</span>
+      <div class="logo-text">
+        <span class="logo-title">XSKT MIỀN NAM</span>
+        <span class="logo-sub">AI Powered · Đa Đài</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn active" data-tab="dashboard">📊 Kết Quả</button>
+      <button class="nav-btn" data-tab="history">📅 Lịch Sử</button>
+      <button class="nav-btn" data-tab="stats">📈 Thống Kê</button>
+      <button class="nav-btn" data-tab="predict">🔮 Dự Đoán</button>
+      <button class="nav-btn" data-tab="ai">🤖 AI Gemini</button>
+      <button class="nav-btn" data-tab="scan" style="color: var(--gold)">📷 Dò Vé Số</button>
+    </nav>
+    <div class="header-right">
+      <button id="theme-toggle" class="btn-icon" style="background:none;border:none;color:var(--text-primary);font-size:20px;cursor:pointer;margin-right:12px;display:flex;align-items:center;" onclick="toggleTheme()" title="Đổi giao diện">🌓</button>
+      <select id="station-select" class="station-dropdown" onchange="changeStation(this.value)">
+        <!-- Render from JS -->
+        <option value="xshcm">TP.HCM</option>
+      </select>
+      <div class="server-status" id="server-status" title="Trạng thái server">
+        <span class="status-dot offline"></span>
+        <span class="status-text">Đang kết nối...</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- ====== TAB: DASHBOARD ====== -->
+  <section class="tab-panel active" id="tab-dashboard">
+    <div class="stats-row" id="top-stats">
+      <div class="stat-card">
+        <div class="stat-icon">📋</div>
+        <div class="stat-info">
+          <div class="stat-value" id="val-total">--</div>
+          <div class="stat-label">Kỳ đã phân tích</div>
+        </div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-icon">8️⃣</div>
+        <div class="stat-info">
+          <div class="stat-value" id="val-g8">--</div>
+          <div class="stat-label">G8 kỳ gần nhất</div>
+        </div>
+      </div>
+      <div class="stat-card highlight-gold">
+        <div class="stat-icon">⭐</div>
+        <div class="stat-info">
+          <div class="stat-value" id="val-db">--</div>
+          <div class="stat-label">Giải ĐB gần nhất</div>
+        </div>
+      </div>
+      <div class="stat-card highlight-green">
+        <div class="stat-icon">🔮</div>
+        <div class="stat-info">
+          <div class="stat-value" id="val-next">--</div>
+          <div class="stat-label">Kỳ tiếp theo</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <div class="dashboard-main-col">
+        <div class="panel">
+          <div class="panel-header">
+            <span>🏆 Kết Quả Mới Nhất</span>
+            <div class="panel-header-right">
+              <span class="update-time" id="update-time"></span>
+              <button class="refresh-btn" id="refresh-btn" onclick="refreshData()">⟳ Cập nhật</button>
+            </div>
+          </div>
+          <div class="panel-body" id="full-ticket-result" style="padding: 10px;">
+            <div class="loading-spinner"><div class="spinner"></div><p>Đang tải...</p></div>
+          </div>
+        </div>
+
+        <div class="panel mt-16">
+          <div class="panel-header">
+            <span>📜 Các Kỳ Quay Gần Đây</span>
+          </div>
+          <div class="panel-body" id="recent-results" style="max-height: 400px; overflow-y: auto;">
+            <div class="loading-spinner"><div class="spinner"></div><p>Đang tải...</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-panels">
+        <div class="panel panel-sm">
+          <div class="panel-header">
+            <span>🔥 G8 Nóng (30 kỳ)</span>
+            <span class="badge badge-red">Giải 8</span>
+          </div>
+          <div class="panel-body" id="hot-g8">
+            <div class="loading-spinner"><div class="spinner"></div></div>
+          </div>
+        </div>
+
+        <div class="panel panel-sm">
+          <div class="panel-header">
+            <span>⭐ Đuôi ĐB Nóng</span>
+            <span class="badge badge-gold">Đặc Biệt</span>
+          </div>
+          <div class="panel-body" id="hot-db">
+            <div class="loading-spinner"><div class="spinner"></div></div>
+          </div>
+        </div>
+
+        <div class="panel panel-sm predict-panel">
+          <div class="panel-header">
+            <span>🎯 Gợi Ý Thống Kê</span>
+            <span class="badge badge-purple">Smart</span>
+          </div>
+          <div class="panel-body" id="quick-predict">
+            <div class="loading-spinner"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel mt-16">
+      <div class="panel-header">
+        <span>🗺️ Bản Đồ Nhiệt Tần Suất</span>
+        <div class="filter-group">
+          <button class="filter-btn active" onclick="updateHeatmap('g8', this)">G8</button>
+          <button class="filter-btn" onclick="updateHeatmap('db', this)">Đuôi ĐB</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="heatmap-container" id="heatmap"></div>
+        <div class="heatmap-legend">
+          <span>Ít xuất hiện</span>
+          <div class="legend-bar"></div>
+          <span>Xuất hiện nhiều</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== TAB: HISTORY ====== -->
+  <section class="tab-panel" id="tab-history">
+    <div class="panel">
+      <div class="panel-header">
+        <span>📅 Lịch Sử Kết Quả</span>
+        <div class="filter-group">
+          <select id="history-filter" onchange="renderHistory()">
+            <option value="all">Tất cả</option>
+          </select>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Ngày</th>
+                <th>Thứ</th>
+                <th>Giải 8</th>
+                <th>Đuôi G8</th>
+                <th>Giải Đặc Biệt</th>
+                <th>Đuôi ĐB</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <tr><td colspan="7" class="text-center">Đang tải...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== TAB: STATISTICS ====== -->
+  <section class="tab-panel" id="tab-stats">
+    <div class="stats-grid-2">
+      <div class="panel">
+        <div class="panel-header">
+          <span>📊 Tần Suất Số G8 (00–99)</span>
+          <select id="stats-range" onchange="renderStats()">
+            <option value="30">30 kỳ</option>
+            <option value="50">50 kỳ</option>
+            <option value="all" selected>Toàn bộ</option>
+          </select>
+        </div>
+        <div class="panel-body">
+          <div class="freq-grid" id="g8-freq-grid"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span>📊 Tần Suất Đuôi Giải ĐB (00–99)</span>
+        </div>
+        <div class="panel-body">
+          <div class="freq-grid" id="db-freq-grid"></div>
+        </div>
+      </div>
+    </div>
+    <div class="stats-grid-3 mt-16">
+      <div class="panel">
+        <div class="panel-header"><span>🔴 Top 10 G8 Nhiều Nhất</span></div>
+        <div class="panel-body" id="top-g8-list"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span>🧊 G8 Gan Lâu Nhất</span></div>
+        <div class="panel-body" id="gan-g8-list"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span>⭐ Top 10 Đuôi ĐB Nhiều Nhất</span></div>
+        <div class="panel-body" id="top-db-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== TAB: PREDICT ====== -->
+  <section class="tab-panel" id="tab-predict">
+    <div class="predict-header-box">
+      <div class="predict-header-content">
+        <h2>🔮 Dự Đoán Thống Kê</h2>
+        <p>Phân tích dựa trên <strong>tần suất</strong>, <strong>chu kỳ lặp lại</strong> và <strong>số gan</strong>. Để có phân tích AI sâu hơn, dùng tab <strong>🤖 AI Gemini</strong>.</p>
+        <div class="disclaimer">⚠️ Chỉ mang tính tham khảo thống kê. Xổ số là ngẫu nhiên hoàn toàn.</div>
+      </div>
+    </div>
+    <div class="predict-grid">
+      <div class="panel predict-card">
+        <div class="panel-header">
+          <span>8️⃣ Dự Đoán Số G8</span>
+          <span class="badge badge-red">Giải 8</span>
+        </div>
+        <div class="panel-body">
+          <div id="predict-g8-result"></div>
+          <div class="method-tabs">
+            <button class="method-tab active" onclick="showMethod('g8','freq',this)">Tần Suất</button>
+            <button class="method-tab" onclick="showMethod('g8','markov',this)">Thói Quen</button>
+            <button class="method-tab" onclick="showMethod('g8','gan',this)">Số Gan</button>
+            <button class="method-tab" onclick="showMethod('g8','cycle',this)">Chu Kỳ</button>
+          </div>
+          <div class="method-content" id="g8-method-content"></div>
+        </div>
+      </div>
+      <div class="panel predict-card">
+        <div class="panel-header">
+          <span>⭐ Dự Đoán Đuôi ĐB</span>
+          <span class="badge badge-gold">Đặc Biệt</span>
+        </div>
+        <div class="panel-body">
+          <div id="predict-db-result"></div>
+          <div class="method-tabs">
+            <button class="method-tab active" onclick="showMethod('db','freq',this)">Tần Suất</button>
+            <button class="method-tab" onclick="showMethod('db','markov',this)">Thói Quen</button>
+            <button class="method-tab" onclick="showMethod('db','gan',this)">Số Gan</button>
+            <button class="method-tab" onclick="showMethod('db','cycle',this)">Chu Kỳ</button>
+          </div>
+          <div class="method-content" id="db-method-content"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel mt-16">
+      <div class="panel-header">
+        <span>📉 Biểu Đồ Xác Suất Top 20</span>
+        <div class="filter-group">
+          <button class="filter-btn active" onclick="updateProbChart('g8',this)">G8</button>
+          <button class="filter-btn" onclick="updateProbChart('db',this)">Đuôi ĐB</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="prob-chart" id="prob-chart"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== TAB: AI GEMINI ====== -->
+  <section class="tab-panel" id="tab-ai">
+
+    <!-- API Key Settings -->
+    <div class="panel ai-settings-panel">
+      <div class="panel-header">
+        <span>🔑 Cài Đặt Google Gemini API</span>
+        <span class="badge badge-green" id="ai-key-status">Chưa cấu hình</span>
+      </div>
+      <div class="panel-body">
+        <div class="api-key-form">
+          <div class="api-key-input-group">
+            <input type="password" id="gemini-api-key" placeholder="Dán Gemini API Key của bạn vào đây..."
+                   autocomplete="off" spellcheck="false">
+            <button class="btn-show-key" onclick="toggleKeyVisibility()" id="show-key-btn">👁</button>
+          </div>
+          <button class="btn-save-key" onclick="saveApiKey()">💾 Lưu Key</button>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn-get-key">🔗 Lấy API Key miễn phí</a>
+        </div>
+        <div class="api-info">
+          <span>✅ Free tier: 15 req/phút, 1 triệu token/ngày</span>
+          <span>🔒 Key được lưu trên máy (localStorage), không gửi đi đâu</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Analysis Panel -->
+    <div class="ai-grid mt-16">
+      <!-- Left: AI Controls -->
+      <div class="panel ai-control-panel">
+        <div class="panel-header">
+          <span>🤖 Yêu Cầu Phân Tích AI</span>
+          <span class="badge badge-purple">Gemini 2.0 Flash</span>
+        </div>
+        <div class="panel-body">
+          <div class="ai-options">
+            <div class="ai-option-group">
+              <label>🤖 Chọn Model Gemini:</label>
+              <select id="ai-model-select">
+                <option value="gemini-2.0-flash-exp" selected>⚡ Gemini 2.0 Flash (Nhanh · Tiết kiệm token)</option>
+                <option value="gemini-1.5-flash-latest">💨 Gemini 1.5 Flash (Ổn định)</option>
+                <option value="gemini-1.5-pro-latest">🧠 Gemini 1.5 Pro (Sâu hơn · Tốn token hơn)</option>
+                <option value="gemini-exp-1206">🔬 Thử nghiệm mới nhất (Experimental)</option>
+              </select>
+            </div>
+            <div class="ai-option-group">
+              <label>📊 Phân tích dữ liệu:</label>
+              <select id="ai-data-range">
+                <option value="20">20 kỳ gần nhất</option>
+                <option value="50" selected>50 kỳ gần nhất</option>
+                <option value="100">100 kỳ gần nhất</option>
+              </select>
+            </div>
+            <div class="ai-option-group">
+              <label>🎯 Loại phân tích:</label>
+              <div class="ai-type-btns">
+                <button class="ai-type-btn active" data-type="full" onclick="selectAiType(this)">
+                  🔮 Phân tích đầy đủ
+                </button>
+                <button class="ai-type-btn" data-type="g8" onclick="selectAiType(this)">
+                  8️⃣ Chỉ Giải 8
+                </button>
+                <button class="ai-type-btn" data-type="db" onclick="selectAiType(this)">
+                  ⭐ Chỉ Giải ĐB
+                </button>
+                <button class="ai-type-btn" data-type="pattern" onclick="selectAiType(this)">
+                  🔍 Phát hiện Pattern
+                </button>
+                <button class="ai-type-btn" data-type="vip" onclick="selectAiType(this)" style="background: rgba(245, 197, 24, 0.1); border-color: rgba(245, 197, 24, 0.3); color: var(--gold);">
+                  👑 Chốt Số VIP
+                </button>
+              </div>
+            </div>
+            <div class="ai-option-group">
+              <label>💬 Câu hỏi thêm (tùy chọn):</label>
+              <textarea id="ai-custom-question" placeholder="VD: Số 45 vừa ra kỳ trước, kỳ này có nên đánh không?..." rows="3"></textarea>
+            </div>
+            <button class="btn-ai-analyze" id="btn-analyze" onclick="runAiAnalysis()">
+              <span class="btn-icon">✨</span>
+              Phân Tích Bằng AI
+            </button>
+            <div id="token-estimate" style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:6px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: AI Result -->
+      <div class="panel ai-result-panel">
+        <div class="panel-header">
+          <span>💡 Kết Quả Phân Tích AI</span>
+          <div id="ai-token-info" style="font-size:11px;color:var(--text-muted)"></div>
+        </div>
+        <div class="panel-body" id="ai-result-body">
+          <div class="ai-placeholder">
+            <div class="ai-placeholder-icon">🤖</div>
+            <p>Nhập API Key và nhấn <strong>"Phân Tích Bằng AI"</strong> để bắt đầu.</p>
+            <p style="font-size:12px;color:var(--text-muted);margin-top:8px">Gemini sẽ phân tích toàn bộ dữ liệu lịch sử và đưa ra gợi ý chi tiết bằng tiếng Việt.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI History Log -->
+    <div class="panel mt-16" id="ai-history-panel" style="display:none">
+      <div class="panel-header">
+        <span>📜 Lịch Sử Phân Tích AI</span>
+        <button class="refresh-btn" onclick="clearAiHistory()">🗑 Xóa</button>
+      </div>
+      <div class="panel-body" id="ai-history-list"></div>
+    </div>
+  </section>
+
+  <!-- SCAN (DÒ VÉ SỐ) TAB -->
+  <div class="tab-panel" id="tab-scan">
+    <div class="panel">
+      <div class="panel-header">
+        <span>📷 Chụp Ảnh Dò Vé Số Bằng AI</span>
+        <span class="badge badge-gold">Gemini Vision</span>
+      </div>
+      <div class="panel-body" style="text-align: center; max-width: 600px; margin: 0 auto;">
+        <p style="color: var(--text-muted); margin-bottom: 20px;">Dùng camera điện thoại chụp hình tờ vé số của bạn. AI sẽ tự động phân tích đài, ngày, dãy số và dò cả 18 giải cho bạn!</p>
+        
+        <div style="position: relative; display: inline-block;">
+          <label for="ticket-upload" class="btn-ai-analyze" style="display:inline-block; cursor:pointer; font-size: 18px; padding: 15px 30px;">
+            <span class="btn-icon">📸</span>
+            Tải Ảnh Lên / Mở Camera
+          </label>
+          <input type="file" id="ticket-upload" accept="image/*" style="opacity: 0; position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer;" onchange="handleImageUpload(event)">
+        </div>
+        
+        <div id="scan-preview-container" style="margin-top: 20px; display: none;">
+          <img id="scan-preview-img" style="max-width: 100%; border-radius: 10px; border: 2px solid var(--border);" />
+          <div id="scan-status" style="margin-top: 15px; font-weight: bold; color: var(--gold);"></div>
+          <div id="scan-result" class="ai-result" style="margin-top: 15px; display: none; text-align: left;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Footer -->
+<footer class="footer">
+  <p>📡 Dữ liệu: <strong>xskt.com.vn</strong> | 🤖 AI: <strong>Google Gemini</strong> | Cập nhật: <span id="last-update">--</span></p>
+</footer>
+
+  <!-- Audio Elements -->
+  <!-- Base64 for a short 'click/wheel' sound (synthesized generic click) -->
+  <audio id="sound-wheel" src="data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YRAAAAAc/xwAGgAeABQAEgAKAAIA8f/t/w==" preload="auto"></audio>
+  <!-- Base64 for a short 'ting' notification sound -->
+  <audio id="sound-ting" src="data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YUAAAAAFAAYAEQAkADcAQgBFAEEAOAAsAB8AFAAJAAEA9P/o/9//2P/T/9D/0P/T/9n/4//v//r/BwAXACYANgBDAE8AWgBjAGYAYwBdAE8AQQAvAB0ACwD5/+n/3P/L/7//tv+0/7f/vv/L/93/7v8=" preload="auto"></audio>
+
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

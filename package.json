@@ -1,0 +1,20 @@
+{
+  "name": "xskt-hcm-analyzer",
+  "version": "2.0.0",
+  "description": "XSKT TP.HCM - Phân tích & Dự đoán với AI Gemini",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
